@@ -1,0 +1,3 @@
+[submodule "openfire-docker-compose"]
+	path = openfire-docker-compose
+	url = https://github.com/surevine/openfire-docker-compose.git

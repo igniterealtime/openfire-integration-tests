@@ -1,0 +1,45 @@
+name: Integration Tests
+
+on:
+  workflow_dispatch:  # Allows manual triggering
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write  # Required for publishing test results
+
+    steps:
+      - name: Checkout Integration Tests
+        uses: actions/checkout@v4
+        with:
+          repository: surevine/openfire-integration-tests
+          path: integration-tests
+
+      - name: Initialize Submodules
+        working-directory: integration-tests
+        run: |
+          git submodule update --init
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'maven'
+
+      - name: Run Integration Tests
+        working-directory: integration-tests
+        run: ./mvnw -B verify
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()  # Run even if tests fail
+        with:
+          junit_files: "integration-tests/target/surefire-reports/*.xml,integration-tests/target/failsafe-reports/*.xml"
+          check_name: "Integration Test Results"

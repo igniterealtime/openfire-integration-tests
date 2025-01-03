@@ -1,0 +1,33 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+
+# IDE - IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# IDE - Eclipse
+.settings/
+.classpath
+.project
+.factorypath
+bin/
+
+# IDE - VSCode
+.vscode/
+
+# Mac OS
+.DS_Store
+
+# Docker data directory created during tests
+openfire-docker-compose/federation/_data/
