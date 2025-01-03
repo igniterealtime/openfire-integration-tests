@@ -7,6 +7,14 @@ Integration tests for Openfire, focusing on federation scenarios.
 - Java 17
 - Docker and Docker Compose
 
+The [openfire-docker-compose](https://github.com/surevine/openfire-docker-compose) system used by these tests expects 
+to find an image tagged as openfire:latest locally. To build one, from 
+the [openfire](https://github.com/igniterealtime/Openfire) project root:
+
+```bash
+docker build -t openfire:latest .
+```
+
 ## Setup
 
 1. Clone this repository:

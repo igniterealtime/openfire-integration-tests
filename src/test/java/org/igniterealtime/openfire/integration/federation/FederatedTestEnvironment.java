@@ -75,6 +75,7 @@ public class FederatedTestEnvironment {
                 .directory(new File("."))
                 .inheritIO();
 
+        // TODO - check external environment first before setting this
         processBuilder.environment().put("OPENFIRE_TAG", "latest");
 
         Process process = processBuilder.start();
