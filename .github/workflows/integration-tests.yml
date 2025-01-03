@@ -8,20 +8,27 @@ on:
     branches: [ main ]
 
 jobs:
-  integration-tests:
+  build-and-test:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       checks: write  # Required for publishing test results
+      packages: read # Required for pulling base images
 
     steps:
+      - name: Checkout Openfire
+        uses: actions/checkout@v4
+        with:
+          repository: surevine/openfire
+          path: openfire
+
       - name: Checkout Integration Tests
         uses: actions/checkout@v4
         with:
           repository: surevine/openfire-integration-tests
           path: integration-tests
 
-      - name: Initialize Submodules
+      - name: Initialize Integration Tests Submodules
         working-directory: integration-tests
         run: |
           git submodule update --init
@@ -33,6 +40,20 @@ jobs:
           java-version: '17'
           cache: 'maven'
 
+      - name: Build Openfire
+        working-directory: openfire
+        run: |
+          ./mvnw -B clean package
+          # Copy the distribution artifact to where Docker expects it
+          cp distribution/target/distribution-*.tar.gz distribution/target/distribution.tar.gz
+
+      - name: Build Docker Image
+        working-directory: openfire
+        run: |
+          docker build -t openfire:latest .
+          # Verify the image was built
+          docker images openfire:latest
+
       - name: Run Integration Tests
         working-directory: integration-tests
         run: ./mvnw -B verify
@@ -43,3 +64,14 @@ jobs:
         with:
           junit_files: "integration-tests/target/surefire-reports/*.xml,integration-tests/target/failsafe-reports/*.xml"
           check_name: "Integration Test Results"
+
+      - name: Archive Test Artifacts
+        if: always()  # Run even if tests fail
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            integration-tests/target/surefire-reports/
+            integration-tests/target/failsafe-reports/
+            integration-tests/target/site/serenity/
+          retention-days: 30
