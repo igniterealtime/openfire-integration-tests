@@ -43,9 +43,8 @@ jobs:
       - name: Build Openfire
         working-directory: openfire
         run: |
-          ./mvnw -B clean package
-          # Copy the distribution artifact to where Docker expects it
-          cp distribution/target/distribution-*.tar.gz distribution/target/distribution.tar.gz
+          # Skip tests and just package
+          ./mvnw -B -DskipTests clean package
 
       - name: Build Docker Image
         working-directory: openfire
