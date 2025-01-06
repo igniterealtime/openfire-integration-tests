@@ -43,15 +43,13 @@ jobs:
       - name: Build Openfire
         working-directory: openfire
         run: |
-          # Skip tests and just package
+          # Skip tests and just package - we just want a Docker image
           ./mvnw -B -DskipTests clean package
 
       - name: Build Docker Image
         working-directory: openfire
         run: |
           docker build -t openfire:latest .
-          # Verify the image was built
-          docker images openfire:latest
 
       - name: Run Integration Tests
         working-directory: integration-tests
@@ -61,16 +59,5 @@ jobs:
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()  # Run even if tests fail
         with:
-          junit_files: "integration-tests/target/surefire-reports/*.xml,integration-tests/target/failsafe-reports/*.xml"
+          junit_files: "target/failsafe-reports/*.xml"
           check_name: "Integration Test Results"
-
-      - name: Archive Test Artifacts
-        if: always()  # Run even if tests fail
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: |
-            integration-tests/target/surefire-reports/
-            integration-tests/target/failsafe-reports/
-            integration-tests/target/site/serenity/
-          retention-days: 30
