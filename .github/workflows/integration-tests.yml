@@ -16,16 +16,21 @@ jobs:
       packages: read # Required for pulling base images
 
     steps:
+      # This and the following step will be replaced with image pull when Openfire publishes to registry
       - name: Checkout Openfire
         uses: actions/checkout@v4
         with:
           repository: igniterealtime/Openfire
           path: openfire
 
+      - name: Build Docker Image
+        working-directory: openfire
+        run: |
+          docker build -t openfire:latest .
+
       - name: Checkout Integration Tests
         uses: actions/checkout@v4
         with:
-          repository: surevine/openfire-integration-tests
           path: openfire-integration-tests
 
       - name: Initialize Integration Tests Submodules
@@ -39,17 +44,6 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
           cache: 'maven'
-
-      - name: Build Openfire
-        working-directory: openfire
-        run: |
-          # Skip tests and just package - we just want a Docker image
-          ./mvnw -B -DskipTests clean package
-
-      - name: Build Docker Image
-        working-directory: openfire
-        run: |
-          docker build -t openfire:latest .
 
       - name: Run Integration Tests
         working-directory: openfire-integration-tests
