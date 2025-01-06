@@ -59,5 +59,7 @@ jobs:
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()  # Run even if tests fail
         with:
-          junit_files: "openfire-integration-tests/target/failsafe-reports/*.xml"
+          files: |
+            openfire-integration-tests/target/failsafe-reports/TEST-*.xml
+            !openfire-integration-tests/target/failsafe-reports/failsafe-summary.xml
           check_name: "Integration Test Results"
