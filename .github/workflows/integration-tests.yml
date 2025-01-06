@@ -9,10 +9,10 @@ on:
 
 jobs:
   build-and-test:
+    name: Run Integration Tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      checks: write  # Required for publishing test results
       packages: read # Required for pulling base images
 
     steps:
@@ -36,7 +36,7 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: 'zulu'
           java-version: '17'
           cache: 'maven'
 
@@ -55,11 +55,9 @@ jobs:
         working-directory: openfire-integration-tests
         run: ./mvnw -B verify
 
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()  # Run even if tests fail
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
         with:
-          files: |
-            openfire-integration-tests/target/failsafe-reports/TEST-*.xml
-            !openfire-integration-tests/target/failsafe-reports/failsafe-summary.xml
-          check_name: "Integration Test Results"
+          name: failsafe-reports
+          path: openfire-integration-tests/target/failsafe-reports
