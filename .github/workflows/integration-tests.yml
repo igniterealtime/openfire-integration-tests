@@ -19,17 +19,17 @@ jobs:
       - name: Checkout Openfire
         uses: actions/checkout@v4
         with:
-          repository: surevine/openfire
+          repository: igniterealtime/Openfire
           path: openfire
 
       - name: Checkout Integration Tests
         uses: actions/checkout@v4
         with:
           repository: surevine/openfire-integration-tests
-          path: integration-tests
+          path: openfire-integration-tests
 
       - name: Initialize Integration Tests Submodules
-        working-directory: integration-tests
+        working-directory: openfire-integration-tests
         run: |
           git submodule update --init
 
@@ -52,12 +52,12 @@ jobs:
           docker build -t openfire:latest .
 
       - name: Run Integration Tests
-        working-directory: integration-tests
+        working-directory: openfire-integration-tests
         run: ./mvnw -B verify
 
       - name: Publish Test Results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: always()  # Run even if tests fail
         with:
-          junit_files: "target/failsafe-reports/*.xml"
+          junit_files: "openfire-integration-tests/target/failsafe-reports/*.xml"
           check_name: "Integration Test Results"
