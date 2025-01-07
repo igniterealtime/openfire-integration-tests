@@ -94,6 +94,24 @@ git submodule update --remote
 git submodule update --init
 ```
 
+### Configuring Openfire Version
+
+By default, the tests will use the `latest` tag of the Openfire Docker image. You can specify a different version by setting the `OPENFIRE_TAG` environment variable:
+
+```bash
+# Run tests with a specific Openfire image tag
+OPENFIRE_TAG=4.7.5 ./mvnw verify
+
+# Or set for your shell session
+export OPENFIRE_TAG=4.7.5
+./mvnw verify
+```
+
+Make sure you have built the Openfire image with the corresponding tag:
+```bash
+docker build -t openfire:4.7.5 .
+```
+
 ## License
 
 This project is licensed under the same terms as Openfire. See [Openfire's license](https://github.com/igniterealtime/Openfire/blob/main/LICENSE.txt) for details.

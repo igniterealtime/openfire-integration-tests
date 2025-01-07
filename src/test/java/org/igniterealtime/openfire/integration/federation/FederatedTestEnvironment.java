@@ -149,8 +149,13 @@ public class FederatedTestEnvironment {
                 .inheritIO();
 
         // Set Openfire version tag
-        // TODO: Check external environment first before setting this
-        processBuilder.environment().put("OPENFIRE_TAG", "latest");
+        // Check environment variable first, fallback to "latest" if not set
+        String openFireTag = System.getenv("OPENFIRE_TAG");
+        if (openFireTag == null || openFireTag.trim().isEmpty()) {
+            openFireTag = "latest";
+        }
+        logger.info("Configured to use Openfire Docker image openfire:{}", openFireTag);
+        processBuilder.environment().put("OPENFIRE_TAG", openFireTag);
 
         Process process = processBuilder.start();
         int exitCode = process.waitFor();
