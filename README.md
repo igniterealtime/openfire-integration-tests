@@ -64,6 +64,24 @@ The project uses Maven Wrapper (no local Maven installation required).
 ./mvnw verify -Dit.test=FederatedChatIT#federatedMessageTest
 ```
 
+### Configuring Openfire Version
+
+By default, the tests will use the `latest` tag of the Openfire Docker image. You can specify a different version by setting the `OPENFIRE_TAG` environment variable:
+
+```bash
+# Run tests with a specific Openfire image tag
+OPENFIRE_TAG=4.7.5 ./mvnw verify
+
+# Or set for your shell session
+export OPENFIRE_TAG=4.7.5
+./mvnw verify
+```
+
+Make sure you have built the Openfire image with the corresponding tag:
+```bash
+docker build -t openfire:4.7.5 .
+```
+
 ### Test Users
 
 The test environment comes with pre-configured users:
@@ -92,24 +110,6 @@ git submodule update --remote
 2. When switching branches or updating submodule reference:
 ```bash
 git submodule update --init
-```
-
-### Configuring Openfire Version
-
-By default, the tests will use the `latest` tag of the Openfire Docker image. You can specify a different version by setting the `OPENFIRE_TAG` environment variable:
-
-```bash
-# Run tests with a specific Openfire image tag
-OPENFIRE_TAG=4.7.5 ./mvnw verify
-
-# Or set for your shell session
-export OPENFIRE_TAG=4.7.5
-./mvnw verify
-```
-
-Make sure you have built the Openfire image with the corresponding tag:
-```bash
-docker build -t openfire:4.7.5 .
 ```
 
 ## License
