@@ -16,14 +16,25 @@ import java.util.concurrent.TimeoutException;
 
 import static org.igniterealtime.openfire.integration.federation.FederatedTestEnvironment.*;
 
+/**
+ * Integration tests for federated chat functionality. Tests the ability to send and receive
+ * messages between users on different XMPP servers in the federation.
+ */
 public class FederatedChatIT extends BaseFederationIT {
     private static final Logger logger = LoggerFactory.getLogger(FederatedChatIT.class);
 
+    /**
+     * Tests federated messaging by:
+     * 1. Connecting users to different servers in the federation
+     * 2. Setting up message listeners
+     * 3. Sending a message from one server to another
+     * 4. Verifying message receipt and content
+     */
     @Test
     void federatedMessageTest() throws Exception {
         logger.info("Starting federated message test...");
 
-        // Configure connections for both users
+        // Configure connections for both users on different servers
         XMPPTCPConnectionConfiguration xmpp1Config = XMPPTCPConnectionConfiguration.builder()
                 .setHost("localhost")
                 .setPort(XMPP1_PORT)
@@ -45,7 +56,7 @@ public class FederatedChatIT extends BaseFederationIT {
         AbstractXMPPConnection xmpp1Connection = new XMPPTCPConnection(xmpp1Config);
         AbstractXMPPConnection xmpp2Connection = new XMPPTCPConnection(xmpp2Config);
 
-        // Create a completable future outside the try block
+        // CompletableFuture to track message receipt
         CompletableFuture<Message> receivedMessage = new CompletableFuture<>();
 
         try {
@@ -62,7 +73,7 @@ public class FederatedChatIT extends BaseFederationIT {
             logger.info("{} connection status: {}", USER_3, xmpp2Connection.isConnected());
             logger.info("{} authenticated status: {}", USER_3, xmpp2Connection.isAuthenticated());
 
-            // Add debugging stanza listeners to both connections
+            // Add debug listeners to monitor all XMPP stanzas
             xmpp1Connection.addAsyncStanzaListener(
                     stanza -> logger.info("Server1 stanza: {}", stanza.toXML()),
                     stanza -> true
@@ -73,12 +84,12 @@ public class FederatedChatIT extends BaseFederationIT {
                     stanza -> true
             );
 
-            // Allow some time for server-to-server federation to establish
+            // Allow time for server-to-server federation to establish
             logger.info("Waiting for federation setup...");
             Thread.sleep(5000);
             logger.info("Finished waiting for federation setup");
 
-            // Set up message listener for user3
+            // Set up message listener for user3 to capture incoming messages
             xmpp2Connection.addAsyncStanzaListener(
                     stanza -> {
                         logger.info("Message listener received stanza: {}", stanza.toXML());
@@ -92,7 +103,7 @@ public class FederatedChatIT extends BaseFederationIT {
                     stanza -> stanza instanceof Message
             );
 
-            // Create and send message from user1 to user3
+            // Create and send test message from user1 to user3
             String testMessage = "Hello from federated server!";
             Message message = xmpp1Connection.getStanzaFactory()
                     .buildMessageStanza()
@@ -105,12 +116,12 @@ public class FederatedChatIT extends BaseFederationIT {
             xmpp1Connection.sendStanza(message);
             logger.info("Message sent from {} to {}: {}", USER_1, USER_3, message.toXML());
 
-            // Wait for the message to be received (with timeout)
+            // Wait for message receipt with timeout
             try {
                 logger.info("Waiting for message to be received...");
                 Message received = receivedMessage.get(30, TimeUnit.SECONDS);
 
-                // Verify the message contents
+                // Verify message contents and metadata
                 Assertions.assertNotNull(received, "Message should be received");
                 Assertions.assertEquals(testMessage, received.getBody(), "Message body should match");
                 Assertions.assertEquals(USER_1 + "@" + XMPP1_DOMAIN, received.getFrom().asBareJid().toString(),
@@ -124,7 +135,7 @@ public class FederatedChatIT extends BaseFederationIT {
             }
 
         } finally {
-            // Only disconnect after we've either received the message or timed out
+            // Clean up connections
             if (xmpp1Connection.isConnected()) {
                 xmpp1Connection.disconnect();
                 logger.info("User1 disconnected");
@@ -135,5 +146,4 @@ public class FederatedChatIT extends BaseFederationIT {
             }
         }
     }
-
 }

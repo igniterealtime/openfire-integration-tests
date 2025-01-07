@@ -11,9 +11,19 @@ import org.slf4j.LoggerFactory;
 
 import static org.igniterealtime.openfire.integration.federation.FederatedTestEnvironment.*;
 
+/**
+ * Integration tests that verify basic connectivity and authentication functionality
+ * in a federated XMPP environment. Tests both successful and failed authentication scenarios.
+ */
 public class ConnectAndAuthenticateIT extends BaseFederationIT {
     private static final Logger logger = LoggerFactory.getLogger(ConnectAndAuthenticateIT.class);
 
+    /**
+     * Tests basic federation functionality by:
+     * 1. Connecting and authenticating a user to the first XMPP server
+     * 2. Connecting and authenticating a different user to the second XMPP server
+     * Both connections are made with valid credentials and should succeed.
+     */
     @Test
     void basicFederationTest() throws Exception {
         logger.info("Starting basic federation test...");
@@ -85,6 +95,10 @@ public class ConnectAndAuthenticateIT extends BaseFederationIT {
         }
     }
 
+    /**
+     * Tests authentication failure handling by attempting to connect with invalid credentials.
+     * Expects a SASLErrorException to be thrown during the login attempt.
+     */
     @Test
     void unauthorizedUserTest() throws Exception {
         logger.info("Starting unauthorized user test...");
