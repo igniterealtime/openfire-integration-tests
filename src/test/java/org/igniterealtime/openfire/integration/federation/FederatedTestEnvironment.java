@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 /**
@@ -33,7 +34,7 @@ public class FederatedTestEnvironment {
     private static boolean initialized = false;
 
     // Time to wait for services to start up completely
-    private static final Duration STARTUP_WAIT = Duration.of(30, ChronoUnit.SECONDS);
+    private static final Duration STARTUP_WAIT = Duration.of(3, ChronoUnit.MINUTES);
 
     // Port configuration for each XMPP server
     public static final int XMPP1_PORT = 5221;  // First server client port
@@ -70,8 +71,7 @@ public class FederatedTestEnvironment {
         if (!initialized) {
             setupSqlOverlay();
             startFederatedEnvironment();
-            logger.info("Waiting {} seconds for servers to initialize...", STARTUP_WAIT.toSeconds());
-            Thread.sleep(STARTUP_WAIT.toMillis());
+            waitForFederatedEnvironment();
             initialized = true;
             // Register shutdown hook to ensure cleanup happens even if tests fail
             Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -173,6 +173,77 @@ public class FederatedTestEnvironment {
         if (exitCode != 0) {
             throw new RuntimeException("Failed to start federated environment, exit code: " + exitCode);
         }
+    }
+
+    /**
+     * Waits for the federated environment to have fully initialized and all servers to be healthy.
+     * <p>
+     * Blocks until all Openfire instances in the federated environment report a healthy status,
+     * or until {@link #STARTUP_WAIT} has elapsed.
+     *
+     * @throws IllegalStateException if any server does not become healthy within the allotted time
+     * @throws InterruptedException if the thread is interrupted while waiting
+     * @throws IOException if an error occurs communicating with the Docker daemon
+     */
+    private static void waitForFederatedEnvironment() throws IllegalStateException, InterruptedException, IOException
+    {
+        logger.info("Waiting up to {} seconds for servers to initialize...", STARTUP_WAIT.toSeconds());
+        final Instant deadline = Instant.now().plus(STARTUP_WAIT);
+        waitForHealthy("openfire", "xmpp1", deadline);
+        waitForHealthy("openfire", "xmpp2", deadline);
+    }
+
+    /**
+     * Blocks until a specific Docker container reports a healthy status, or the deadline is reached.
+     *
+     * The container is identified by the standard Compose naming convention: {@code <project>-<service>-1}.
+     *
+     * Health status is polled using the Docker inspect command.
+     *
+     * @param project  the Docker Compose project name
+     * @param service  the service name within the Compose project
+     * @param deadline the point in time after which the wait is abandoned
+     * @throws IllegalStateException if the container does not become healthy before the deadline
+     * @throws InterruptedException  if the thread is interrupted while waiting
+     * @throws IOException           if an error occurs communicating with the Docker daemon
+     */
+    private static void waitForHealthy(String project, String service, Instant deadline) throws IOException, InterruptedException
+    {
+        System.out.print("Waiting for " + service + "...");
+        while (Instant.now().isBefore(deadline)) {
+            if (isContainerHealthy(project, service)) {
+                System.out.println(" healthy.");
+                return;
+            }
+            Thread.sleep(1_000);
+            System.out.print(".");
+        }
+        throw new IllegalStateException("Timed out waiting for " + service + " to become healthy");
+    }
+
+    /**
+     * Checks whether a Docker container is currently reporting a healthy status.
+     *
+     * Invokes {@code docker inspect} to retrieve the container's health status. Returns {@code false} for any status
+     * other than {@code healthy}, including {@code starting}, {@code unhealthy}, or if the container cannot be found.
+     *
+     * @param project the Docker Compose project name
+     * @param service the service name within the Compose project
+     * @return {@code true} if the container's health status is {@code healthy}, {@code false} otherwise
+     * @throws InterruptedException if the thread is interrupted while waiting for the {@code docker inspect} process to complete
+     * @throws IOException if the {@code docker} executable cannot be found or an I/O error occurs
+     */
+    private static boolean isContainerHealthy(String project, String service) throws IOException, InterruptedException
+    {
+        final String containerName = project + "-" + service + "-1";
+        final ProcessBuilder pb = new ProcessBuilder("docker", "inspect", "--format", "{{.State.Health.Status}}", containerName);
+        pb.redirectErrorStream(true);
+
+        final Process process = pb.start();
+        final String output = new String(process.getInputStream().readAllBytes()).trim();
+        process.waitFor();
+
+        return "healthy".equals(output);
     }
 
     /**
