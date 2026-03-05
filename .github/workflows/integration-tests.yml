@@ -58,3 +58,10 @@ jobs:
         with:
           name: failsafe-reports
           path: openfire-integration-tests/target/failsafe-reports
+
+      - name: Upload Openfire logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openfire-logs
+          path: openfire-integration-tests/*.log
