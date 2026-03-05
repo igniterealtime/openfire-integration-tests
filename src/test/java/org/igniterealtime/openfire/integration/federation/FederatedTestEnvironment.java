@@ -33,7 +33,7 @@ public class FederatedTestEnvironment {
     private static boolean initialized = false;
 
     // Time to wait for services to start up completely
-    private static final Duration STARTUP_WAIT = Duration.of(10, ChronoUnit.SECONDS);
+    private static final Duration STARTUP_WAIT = Duration.of(30, ChronoUnit.SECONDS);
 
     // Port configuration for each XMPP server
     public static final int XMPP1_PORT = 5221;  // First server client port
