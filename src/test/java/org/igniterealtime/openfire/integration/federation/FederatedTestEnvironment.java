@@ -148,13 +148,22 @@ public class FederatedTestEnvironment {
                 .directory(new File("."))
                 .inheritIO();
 
+        // Set Openfire image name
+        // Check environment variable first, fallback to "openfire" if not set
+        String openFireImage = System.getenv("OPENFIRE_IMAGE");
+        if (openFireImage == null || openFireImage.trim().isEmpty()) {
+            openFireImage = "openfire";
+        }
+
         // Set Openfire version tag
         // Check environment variable first, fallback to "latest" if not set
         String openFireTag = System.getenv("OPENFIRE_TAG");
         if (openFireTag == null || openFireTag.trim().isEmpty()) {
             openFireTag = "latest";
         }
-        logger.info("Configured to use Openfire Docker image openfire:{}", openFireTag);
+
+        logger.info("Configured to use Openfire Docker image {}:{}", openFireImage, openFireTag);
+        processBuilder.environment().put("OPENFIRE_IMAGE", openFireImage);
         processBuilder.environment().put("OPENFIRE_TAG", openFireTag);
 
         Process process = processBuilder.start();

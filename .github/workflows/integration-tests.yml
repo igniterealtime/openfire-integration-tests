@@ -47,6 +47,9 @@ jobs:
 
       - name: Run Integration Tests
         working-directory: openfire-integration-tests
+        env:
+          OPENFIRE_IMAGE: openfire
+          OPENFIRE_TAG: latest
         run: ./mvnw -B verify
 
       - name: Upload test reports
