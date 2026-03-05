@@ -31,3 +31,6 @@ bin/
 
 # Docker data directory created during tests
 openfire-docker-compose/federation/_data/
+
+# Files generated at runtime
+*.log

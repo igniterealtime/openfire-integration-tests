@@ -98,6 +98,7 @@ public class FederatedTestEnvironment {
      */
     public static synchronized void stop() throws Exception {
         if (initialized) {
+            exportLogs();
             cleanupSqlOverlay();
             stopFederatedEnvironment();
             initialized = false;
@@ -172,6 +173,25 @@ public class FederatedTestEnvironment {
         if (exitCode != 0) {
             throw new RuntimeException("Failed to start federated environment, exit code: " + exitCode);
         }
+    }
+
+    /**
+     * Invokes the get_logs.sh script to export Openfire logs from the images.
+     *
+     * @throws IOException if script execution fails
+     * @throws InterruptedException if script execution is interrupted
+     */
+    private static void exportLogs() throws IOException, InterruptedException {
+        logger.info("Exporting logs...");
+        File stopScript = new File("openfire-docker-compose/scripts/get_logs.sh");
+        stopScript.setExecutable(true);
+
+        ProcessBuilder processBuilder = new ProcessBuilder("/bin/bash", stopScript.getPath())
+            .directory(new File("."))
+            .inheritIO();
+
+        Process process = processBuilder.start();
+        process.waitFor();
     }
 
     /**
