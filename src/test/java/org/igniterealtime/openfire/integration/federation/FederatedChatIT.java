@@ -24,63 +24,76 @@ public class FederatedChatIT extends BaseFederationIT {
     private static final Logger logger = LoggerFactory.getLogger(FederatedChatIT.class);
 
     /**
+     * Tests federated messaging from a user of the first server to a user of the second server.
+     */
+    @Test
+    void federatedMessageTest() throws Exception {
+        assertFederatedMessageDelivered(XMPP1_PORT, XMPP1_DOMAIN, USER_1, XMPP2_PORT, XMPP2_DOMAIN, USER_3);
+    }
+
+    /**
+     * Tests federated messaging from a user of the second server to a user of the first server, so that each server
+     * is tested both as the server that opens the server-to-server connection and as the server that receives it.
+     */
+    @Test
+    void federatedMessageFromSecondServerTest() throws Exception {
+        assertFederatedMessageDelivered(XMPP2_PORT, XMPP2_DOMAIN, USER_3, XMPP1_PORT, XMPP1_DOMAIN, USER_1);
+    }
+
+    /**
      * Tests federated messaging by:
      * 1. Connecting users to different servers in the federation
      * 2. Setting up message listeners
      * 3. Sending a message from one server to another
      * 4. Verifying message receipt and content
      */
-    @Test
-    void federatedMessageTest() throws Exception {
-        logger.info("Starting federated message test...");
+    private void assertFederatedMessageDelivered(int senderPort, String senderDomain, String sender,
+                                                 int recipientPort, String recipientDomain, String recipient) throws Exception {
+        logger.info("Starting federated message test from {}@{} to {}@{}...", sender, senderDomain, recipient, recipientDomain);
 
         // Configure connections for both users on different servers
-        XMPPTCPConnectionConfiguration xmpp1Config = XMPPTCPConnectionConfiguration.builder()
+        XMPPTCPConnectionConfiguration senderConfig = XMPPTCPConnectionConfiguration.builder()
                 .setHost("localhost")
-                .setPort(XMPP1_PORT)
-                .setXmppDomain(XMPP1_DOMAIN)
-                .setUsernameAndPassword(USER_1, PASSWORD)
+                .setPort(senderPort)
+                .setXmppDomain(senderDomain)
+                .setUsernameAndPassword(sender, PASSWORD)
                 .setSecurityMode(XMPPTCPConnectionConfiguration.SecurityMode.disabled)
                 .setConnectTimeout(5000)
                 .build();
 
-        XMPPTCPConnectionConfiguration xmpp2Config = XMPPTCPConnectionConfiguration.builder()
+        XMPPTCPConnectionConfiguration recipientConfig = XMPPTCPConnectionConfiguration.builder()
                 .setHost("localhost")
-                .setPort(XMPP2_PORT)
-                .setXmppDomain(XMPP2_DOMAIN)
-                .setUsernameAndPassword(USER_3, PASSWORD)
+                .setPort(recipientPort)
+                .setXmppDomain(recipientDomain)
+                .setUsernameAndPassword(recipient, PASSWORD)
                 .setSecurityMode(XMPPTCPConnectionConfiguration.SecurityMode.disabled)
                 .setConnectTimeout(5000)
                 .build();
 
-        AbstractXMPPConnection xmpp1Connection = new XMPPTCPConnection(xmpp1Config);
-        AbstractXMPPConnection xmpp2Connection = new XMPPTCPConnection(xmpp2Config);
+        AbstractXMPPConnection senderConnection = new XMPPTCPConnection(senderConfig);
+        AbstractXMPPConnection recipientConnection = new XMPPTCPConnection(recipientConfig);
 
         // CompletableFuture to track message receipt
         CompletableFuture<Message> receivedMessage = new CompletableFuture<>();
 
         try {
             // Connect and login both users
-            xmpp1Connection.connect();
-            xmpp1Connection.login();
-            logger.info("{} connected and logged in to {}", USER_1, XMPP1_DOMAIN);
-            logger.info("{} connection status: {}", USER_1, xmpp1Connection.isConnected());
-            logger.info("{} authenticated status: {}", USER_1, xmpp1Connection.isAuthenticated());
+            senderConnection.connect();
+            senderConnection.login();
+            logger.info("{} connected and logged in to {}", sender, senderDomain);
 
-            xmpp2Connection.connect();
-            xmpp2Connection.login();
-            logger.info("{} connected and logged in to {}", USER_3, XMPP2_DOMAIN);
-            logger.info("{} connection status: {}", USER_3, xmpp2Connection.isConnected());
-            logger.info("{} authenticated status: {}", USER_3, xmpp2Connection.isAuthenticated());
+            recipientConnection.connect();
+            recipientConnection.login();
+            logger.info("{} connected and logged in to {}", recipient, recipientDomain);
 
             // Add debug listeners to monitor all XMPP stanzas
-            xmpp1Connection.addAsyncStanzaListener(
-                    stanza -> logger.info("Server1 stanza: {}", stanza.toXML()),
+            senderConnection.addAsyncStanzaListener(
+                    stanza -> logger.info("Sender stanza: {}", stanza.toXML()),
                     stanza -> true
             );
 
-            xmpp2Connection.addAsyncStanzaListener(
-                    stanza -> logger.info("Server2 stanza: {}", stanza.toXML()),
+            recipientConnection.addAsyncStanzaListener(
+                    stanza -> logger.info("Recipient stanza: {}", stanza.toXML()),
                     stanza -> true
             );
 
@@ -89,8 +102,8 @@ public class FederatedChatIT extends BaseFederationIT {
             Thread.sleep(5000);
             logger.info("Finished waiting for federation setup");
 
-            // Set up message listener for user3 to capture incoming messages
-            xmpp2Connection.addAsyncStanzaListener(
+            // Set up message listener for the recipient to capture incoming messages
+            recipientConnection.addAsyncStanzaListener(
                     stanza -> {
                         logger.info("Message listener received stanza: {}", stanza.toXML());
                         if (stanza instanceof Message message) {
@@ -103,18 +116,18 @@ public class FederatedChatIT extends BaseFederationIT {
                     stanza -> stanza instanceof Message
             );
 
-            // Create and send test message from user1 to user3
-            String testMessage = "Hello from federated server!";
-            Message message = xmpp1Connection.getStanzaFactory()
+            // Create and send test message from the sender to the recipient
+            String testMessage = "Hello from federated server " + senderDomain + "!";
+            Message message = senderConnection.getStanzaFactory()
                     .buildMessageStanza()
-                    .to(JidCreate.entityBareFrom(USER_3 + "@" + XMPP2_DOMAIN))
+                    .to(JidCreate.entityBareFrom(recipient + "@" + recipientDomain))
                     .ofType(Message.Type.chat)
                     .setBody(testMessage)
                     .build();
 
             logger.info("Sending message...");
-            xmpp1Connection.sendStanza(message);
-            logger.info("Message sent from {} to {}: {}", USER_1, USER_3, message.toXML());
+            senderConnection.sendStanza(message);
+            logger.info("Message sent from {} to {}: {}", sender, recipient, message.toXML());
 
             // Wait for message receipt with timeout
             try {
@@ -124,25 +137,25 @@ public class FederatedChatIT extends BaseFederationIT {
                 // Verify message contents and metadata
                 Assertions.assertNotNull(received, "Message should be received");
                 Assertions.assertEquals(testMessage, received.getBody(), "Message body should match");
-                Assertions.assertEquals(USER_1 + "@" + XMPP1_DOMAIN, received.getFrom().asBareJid().toString(),
-                        "Message should be from user1");
+                Assertions.assertEquals(sender + "@" + senderDomain, received.getFrom().asBareJid().toString(),
+                        "Message should be from " + sender + "@" + senderDomain);
 
                 logger.info("Message successfully received and verified");
             } catch (TimeoutException e) {
-                logger.error("Timeout while waiting for message. Connection1 status: {}, Connection2 status: {}",
-                        xmpp1Connection.isConnected(), xmpp2Connection.isConnected());
+                logger.error("Timeout while waiting for message. Sender connection status: {}, recipient connection status: {}",
+                        senderConnection.isConnected(), recipientConnection.isConnected());
                 throw e;
             }
 
         } finally {
             // Clean up connections
-            if (xmpp1Connection.isConnected()) {
-                xmpp1Connection.disconnect();
-                logger.info("User1 disconnected");
+            if (senderConnection.isConnected()) {
+                senderConnection.disconnect();
+                logger.info("{} disconnected", sender);
             }
-            if (xmpp2Connection.isConnected()) {
-                xmpp2Connection.disconnect();
-                logger.info("User3 disconnected");
+            if (recipientConnection.isConnected()) {
+                recipientConnection.disconnect();
+                logger.info("{} disconnected", recipient);
             }
         }
     }

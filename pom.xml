@@ -140,11 +140,37 @@
                     </systemPropertyVariables>
                 </configuration>
                 <executions>
+                    <!-- The servers authenticate to each other with dialback (server-to-server TLS disabled). -->
                     <execution>
+                        <id>dialback</id>
                         <goals>
                             <goal>integration-test</goal>
                             <goal>verify</goal>
                         </goals>
+                        <configuration>
+                            <systemPropertyVariables>
+                                <openfire.it.s2s-authentication>dialback</openfire.it.s2s-authentication>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </execution>
+                    <!-- The tests that send stanzas between the servers, with the servers authenticating to each other
+                         with SASL EXTERNAL. A test of server-to-server traffic is to be added to these includes. -->
+                    <execution>
+                        <id>sasl-external</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <includes combine.self="override">
+                                <include>**/FederatedChatIT.java</include>
+                            </includes>
+                            <systemPropertyVariables>
+                                <openfire.it.s2s-authentication>sasl-external</openfire.it.s2s-authentication>
+                            </systemPropertyVariables>
+                            <reportsDirectory>${project.build.directory}/failsafe-reports/sasl-external</reportsDirectory>
+                            <summaryFile>${project.build.directory}/failsafe-reports/sasl-external/failsafe-summary.xml</summaryFile>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

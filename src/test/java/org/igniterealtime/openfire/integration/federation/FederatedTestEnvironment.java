@@ -28,10 +28,25 @@ import java.time.temporal.ChronoUnit;
  *
  * Local SQL overlays and additional configuration files are applied on top of
  * the base setup to customize it for integration testing.
+ *
+ * The system property {@value #S2S_AUTHENTICATION_PROPERTY} selects how the servers authenticate to each other:
+ * {@code dialback} (the default), with server-to-server TLS disabled, or {@code sasl-external}, with TLS enabled and
+ * dialback disabled, so that the servers authenticate with the certificates of the federation environment.
  */
 public class FederatedTestEnvironment {
     private static final Logger logger = LoggerFactory.getLogger(FederatedTestEnvironment.class);
     private static boolean initialized = false;
+
+    /**
+     * The system property that selects how the servers authenticate to each other: {@code dialback} or
+     * {@code sasl-external}.
+     */
+    public static final String S2S_AUTHENTICATION_PROPERTY = "openfire.it.s2s-authentication";
+
+    // The SQL overlay that configures each way of authenticating, and the name under which it is copied.
+    private static final String DIALBACK_OVERLAY = "disable-starttls.sql";
+    private static final String SASL_EXTERNAL_OVERLAY = "sasl-external.sql";
+    private static final String OVERLAY_TARGET = "zz-s2s-authentication.sql";
 
     // Time to wait for services to start up completely
     private static final Duration STARTUP_WAIT = Duration.of(3, ChronoUnit.MINUTES);
@@ -106,21 +121,37 @@ public class FederatedTestEnvironment {
     }
 
     /**
+     * Returns the name of the SQL overlay for the way of authenticating that {@value #S2S_AUTHENTICATION_PROPERTY}
+     * selects.
+     *
+     * @return the file name of the overlay in {@code src/test/resources/docker/federation}
+     * @throws IllegalArgumentException if the property has a value other than {@code dialback} or {@code sasl-external}
+     */
+    static String s2sAuthenticationOverlay() {
+        final String mode = System.getProperty(S2S_AUTHENTICATION_PROPERTY, "dialback");
+        return switch (mode) {
+            case "dialback" -> DIALBACK_OVERLAY;
+            case "sasl-external" -> SASL_EXTERNAL_OVERLAY;
+            default -> throw new IllegalArgumentException("Unsupported value for " + S2S_AUTHENTICATION_PROPERTY + ": " + mode);
+        };
+    }
+
+    /**
      * Sets up SQL overlay directories with configuration files.
      *
-     * Copies the STARTTLS disable script. This script is required as
-     * there's currently a bug preventing self-signed certificates from
-     * being used for server-to-server (S2S) connections.
+     * Copies the script that configures how the servers authenticate to each other: with dialback, which disables
+     * server-to-server TLS, or with SASL EXTERNAL, which disables dialback.
      *
      * @throws IOException if file operations fail
      */
     private static void setupSqlOverlay() throws IOException {
-        logger.info("Setting up SQL overlay directories...");
+        final String overlay = s2sAuthenticationOverlay();
+        logger.info("Setting up SQL overlay directories for server-to-server authentication with {}...", overlay);
         for (int i = 1; i <= 2; i++) {
             Files.createDirectories(Path.of("openfire-docker-compose/federation/sql/" + i));
             Files.copy(
-                    Path.of("src/test/resources/docker/federation/disable-starttls.sql"),
-                    Path.of("openfire-docker-compose/federation/sql/" + i + "/zz-disable-starttls.sql"),
+                    Path.of("src/test/resources/docker/federation/" + overlay),
+                    Path.of("openfire-docker-compose/federation/sql/" + i + "/" + OVERLAY_TARGET),
                     StandardCopyOption.REPLACE_EXISTING
             );
         }
@@ -273,7 +304,7 @@ public class FederatedTestEnvironment {
     private static void cleanupSqlOverlay() throws IOException {
         logger.info("Cleaning up SQL overlay files...");
         for (int i = 1; i <= 2; i++) {
-            Files.deleteIfExists(Path.of("openfire-docker-compose/federation/sql/" + i + "/zz-disable-starttls.sql"));
+            Files.deleteIfExists(Path.of("openfire-docker-compose/federation/sql/" + i + "/" + OVERLAY_TARGET));
         }
     }
 

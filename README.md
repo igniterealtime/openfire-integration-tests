@@ -64,6 +64,19 @@ The project uses Maven Wrapper (no local Maven installation required).
 ./mvnw verify -Dit.test=FederatedChatIT#federatedMessageTest
 ```
 
+### Server-to-Server Authentication
+
+`./mvnw verify` runs the federation tests in two configurations, one for each way in which the servers can authenticate
+to each other:
+
+- **dialback** (Failsafe execution `dialback`): all tests. Server-to-server TLS is disabled, so the servers use dialback.
+- **SASL EXTERNAL** (Failsafe execution `sasl-external`): only the tests that send stanzas between the servers, listed in
+  that execution's `<includes>` in `pom.xml`; add a new test of server-to-server traffic there. TLS is enabled and
+  dialback disabled, so the servers authenticate with the certificates of the federation environment.
+  `xmpp.server.outgoing.accept-reused-stream-id` is false on both servers, so this run also fails if a server does not
+  send a new stream ID when the stream is restarted after SASL. Reports are written to
+  `target/failsafe-reports/sasl-external`.
+
 ### Configuring Openfire Version
 
 By default, the tests will use the `latest` tag of the Openfire Docker image. You can specify a different version by setting the `OPENFIRE_TAG` environment variable:
