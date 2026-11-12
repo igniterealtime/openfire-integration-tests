@@ -105,6 +105,7 @@ public class FederatedTestEnvironment {
      * This method:
      * 1. Removes SQL overlay files
      * 2. Stops and removes Docker containers
+     * 3. Removes the data directory that the containers wrote to
      *
      * The method is idempotent - subsequent calls will have no effect
      * if the environment is already stopped.
@@ -116,6 +117,7 @@ public class FederatedTestEnvironment {
             exportLogs();
             cleanupSqlOverlay();
             stopFederatedEnvironment();
+            removeDataDirectory();
             initialized = false;
         }
     }
@@ -327,5 +329,32 @@ public class FederatedTestEnvironment {
 
         Process process = processBuilder.start();
         process.waitFor();
+    }
+
+    /**
+     * Removes the {@code _data} directory of the federated environment, which the Openfire containers write to.
+     *
+     * On Linux, files that the containers create there are owned by the user that the containers run as, so the user
+     * that runs the tests cannot always delete them. The start script deletes this directory, so without this, the
+     * environment could not be started again in the same build, as the run with SASL EXTERNAL does after the run with
+     * dialback. The directory is therefore deleted from a container, as root.
+     *
+     * @throws IOException if the docker command cannot be run
+     * @throws InterruptedException if the thread is interrupted while waiting for the command
+     * @throws IllegalStateException if the directory could not be deleted
+     */
+    private static void removeDataDirectory() throws IOException, InterruptedException {
+        final Path federation = Path.of("openfire-docker-compose/federation").toAbsolutePath();
+        if (!Files.exists(federation.resolve("_data"))) {
+            return;
+        }
+        logger.info("Removing the data directory of the federated environment...");
+        final ProcessBuilder processBuilder = new ProcessBuilder("docker", "run", "--rm",
+                "-v", federation + ":/federation", "alpine:3.20", "rm", "-rf", "/federation/_data")
+                .inheritIO();
+        final int exitCode = processBuilder.start().waitFor();
+        if (exitCode != 0 || Files.exists(federation.resolve("_data"))) {
+            throw new IllegalStateException("Failed to remove " + federation.resolve("_data") + ", exit code: " + exitCode);
+        }
     }
 }
