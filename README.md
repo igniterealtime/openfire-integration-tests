@@ -77,6 +77,9 @@ to each other:
   send a new stream ID when the stream is restarted after SASL. Reports are written to
   `target/failsafe-reports/sasl-external`.
 
+Each run exports the Openfire logs of both servers (`1-openfire.log`, `2-openfire.log`) next to its test reports, in
+`target/failsafe-reports` and `target/failsafe-reports/sasl-external`.
+
 ### Configuring Openfire Version
 
 By default, the tests will use the `latest` tag of the Openfire Docker image. You can specify a different version by setting the `OPENFIRE_TAG` environment variable:

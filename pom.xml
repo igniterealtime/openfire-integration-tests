@@ -150,6 +150,7 @@
                         <configuration>
                             <systemPropertyVariables>
                                 <openfire.it.s2s-authentication>dialback</openfire.it.s2s-authentication>
+                                <openfire.it.log-directory>${project.build.directory}/failsafe-reports</openfire.it.log-directory>
                             </systemPropertyVariables>
                         </configuration>
                     </execution>
@@ -167,6 +168,7 @@
                             </includes>
                             <systemPropertyVariables>
                                 <openfire.it.s2s-authentication>sasl-external</openfire.it.s2s-authentication>
+                                <openfire.it.log-directory>${project.build.directory}/failsafe-reports/sasl-external</openfire.it.log-directory>
                             </systemPropertyVariables>
                             <reportsDirectory>${project.build.directory}/failsafe-reports/sasl-external</reportsDirectory>
                             <summaryFile>${project.build.directory}/failsafe-reports/sasl-external/failsafe-summary.xml</summaryFile>

@@ -48,6 +48,15 @@ public class FederatedTestEnvironment {
     private static final String SASL_EXTERNAL_OVERLAY = "sasl-external.sql";
     private static final String OVERLAY_TARGET = "zz-s2s-authentication.sql";
 
+    // The name under which earlier versions of these tests copied the overlay that disables server-to-server TLS.
+    private static final String LEGACY_OVERLAY_TARGET = "zz-disable-starttls.sql";
+
+    /**
+     * The system property that names the directory to which the Openfire logs are exported when the environment
+     * stops. Defaults to the working directory.
+     */
+    public static final String LOG_DIRECTORY_PROPERTY = "openfire.it.log-directory";
+
     // Time to wait for services to start up completely
     private static final Duration STARTUP_WAIT = Duration.of(3, ChronoUnit.MINUTES);
 
@@ -142,7 +151,8 @@ public class FederatedTestEnvironment {
      * Sets up SQL overlay directories with configuration files.
      *
      * Copies the script that configures how the servers authenticate to each other: with dialback, which disables
-     * server-to-server TLS, or with SASL EXTERNAL, which disables dialback.
+     * server-to-server TLS, or with SASL EXTERNAL, which disables dialback. Removes the overlay under the name that
+     * earlier versions of these tests used, so that a file left behind by an interrupted run can't affect either run.
      *
      * @throws IOException if file operations fail
      */
@@ -151,6 +161,7 @@ public class FederatedTestEnvironment {
         logger.info("Setting up SQL overlay directories for server-to-server authentication with {}...", overlay);
         for (int i = 1; i <= 2; i++) {
             Files.createDirectories(Path.of("openfire-docker-compose/federation/sql/" + i));
+            Files.deleteIfExists(Path.of("openfire-docker-compose/federation/sql/" + i + "/" + LEGACY_OVERLAY_TARGET));
             Files.copy(
                     Path.of("src/test/resources/docker/federation/" + overlay),
                     Path.of("openfire-docker-compose/federation/sql/" + i + "/" + OVERLAY_TARGET),
@@ -280,22 +291,25 @@ public class FederatedTestEnvironment {
     }
 
     /**
-     * Invokes the get_logs.sh script to export Openfire logs from the images.
+     * Invokes the get_logs.sh script to export Openfire logs from the images, into the directory that
+     * {@value #LOG_DIRECTORY_PROPERTY} names, so that each run's logs are kept next to its test reports.
      *
      * @throws IOException if script execution fails
      * @throws InterruptedException if script execution is interrupted
      */
     private static void exportLogs() throws IOException, InterruptedException {
-        logger.info("Exporting logs...");
-        File stopScript = new File("openfire-docker-compose/scripts/get_logs.sh");
-        stopScript.setExecutable(true);
+        final Path logDirectory = Path.of(System.getProperty(LOG_DIRECTORY_PROPERTY, ".")).toAbsolutePath();
+        Files.createDirectories(logDirectory);
+        logger.info("Exporting Openfire logs to {}...", logDirectory);
 
-        ProcessBuilder processBuilder = new ProcessBuilder("/bin/bash", stopScript.getPath())
-            .directory(new File("."))
+        final File script = new File("openfire-docker-compose/scripts/get_logs.sh").getAbsoluteFile();
+        script.setExecutable(true);
+
+        // The script writes to relative paths, so it is run from the log directory.
+        final ProcessBuilder processBuilder = new ProcessBuilder("/bin/bash", script.getPath())
+            .directory(logDirectory.toFile())
             .inheritIO();
-
-        Process process = processBuilder.start();
-        process.waitFor();
+        processBuilder.start().waitFor();
     }
 
     /**
