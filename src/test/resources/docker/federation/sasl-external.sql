@@ -1,6 +1,13 @@
 -- Description: servers authenticate to each other with SASL EXTERNAL
--- STARTTLS stays enabled, so the servers present the certificates of the federation environment, and dialback is
--- disabled, so that SASL EXTERNAL is the only way in which they can authenticate.
+-- TLS is required, so the servers present the certificates of the federation environment, and dialback is disabled,
+-- so that SASL EXTERNAL is the only way in which they can authenticate.
+
+-- TLS is required: SASL EXTERNAL authenticates with the certificates presented during TLS. This also overrides an
+-- overlay that disables TLS, such as a zz-disable-starttls.sql left behind by an earlier, interrupted run.
+INSERT INTO ofProperty (name, propValue)
+VALUES ('xmpp.server.tls.policy', 'required')
+    ON CONFLICT (name) DO UPDATE SET propValue = 'required';
+
 INSERT INTO ofProperty (name, propValue)
 VALUES ('xmpp.server.dialback.enabled', 'false')
     ON CONFLICT (name) DO UPDATE SET propValue = 'false';
