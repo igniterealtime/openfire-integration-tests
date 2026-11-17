@@ -74,11 +74,10 @@ to each other:
   that execution's `<includes>` in `pom.xml`; add a new test of server-to-server traffic there. TLS is enabled and
   dialback disabled, so the servers authenticate with the certificates of the federation environment.
   `xmpp.server.outgoing.accept-reused-stream-id` is false on both servers, so this run also fails if a server does not
-  send a new stream ID when the stream is restarted after SASL. Reports are written to
-  `target/failsafe-reports/sasl-external`.
+  send a new stream ID when the stream is restarted after SASL.
 
-Each run exports the Openfire logs of both servers (`1-openfire.log`, `2-openfire.log`) next to its test reports, in
-`target/failsafe-reports` and `target/failsafe-reports/sasl-external`.
+Each run writes its test reports, and the Openfire logs of both servers (`1-openfire.log`, `2-openfire.log`), to its own
+directory: `target/failsafe-reports/dialback` and `target/failsafe-reports/sasl-external`.
 
 ### Configuring Openfire Version
 

@@ -150,8 +150,10 @@
                         <configuration>
                             <systemPropertyVariables>
                                 <openfire.it.s2s-authentication>dialback</openfire.it.s2s-authentication>
-                                <openfire.it.log-directory>${project.build.directory}/failsafe-reports</openfire.it.log-directory>
+                                <openfire.it.log-directory>${project.build.directory}/failsafe-reports/dialback</openfire.it.log-directory>
                             </systemPropertyVariables>
+                            <reportsDirectory>${project.build.directory}/failsafe-reports/dialback</reportsDirectory>
+                            <summaryFile>${project.build.directory}/failsafe-reports/dialback/failsafe-summary.xml</summaryFile>
                         </configuration>
                     </execution>
                     <!-- The tests that send stanzas between the servers, with the servers authenticating to each other
