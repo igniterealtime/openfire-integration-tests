@@ -32,6 +32,11 @@ import java.time.temporal.ChronoUnit;
  * The system property {@value #S2S_AUTHENTICATION_PROPERTY} selects how the servers authenticate to each other:
  * {@code dialback} (the default), with server-to-server TLS disabled, or {@code sasl-external}, with TLS enabled and
  * dialback disabled, so that the servers authenticate with the certificates of the federation environment.
+ *
+ * When the system property {@value #STREAM_MANAGEMENT_PROPERTY} is {@code true}, both servers use Stream Management
+ * (XEP-0198) with resumption on their server-to-server connections, and each reaches the other through a relay
+ * container, which a test can freeze and break ({@link #freezeRelay()}, {@link #breakRelay()}) to break a connection
+ * without closing its stream.
  */
 public class FederatedTestEnvironment {
     private static final Logger logger = LoggerFactory.getLogger(FederatedTestEnvironment.class);
@@ -47,6 +52,23 @@ public class FederatedTestEnvironment {
     private static final String DIALBACK_OVERLAY = "disable-starttls.sql";
     private static final String SASL_EXTERNAL_OVERLAY = "sasl-external.sql";
     private static final String OVERLAY_TARGET = "zz-s2s-authentication.sql";
+
+    /**
+     * The system property that, when {@code true}, enables Stream Management with resumption on server-to-server
+     * connections, and routes them through the relay container.
+     */
+    public static final String STREAM_MANAGEMENT_PROPERTY = "openfire.it.stream-management";
+
+    // The SQL overlay of each server that enables Stream Management (stream-management-1.sql, -2.sql), and its target.
+    private static final String STREAM_MANAGEMENT_OVERLAY = "stream-management-%d.sql";
+    private static final String STREAM_MANAGEMENT_OVERLAY_TARGET = "zz-stream-management.sql";
+
+    // The relay container, on the network of the federated environment. Port 5269 leads to xmpp2, port 5270 to xmpp1.
+    private static final String RELAY_CONTAINER = "openfire-s2s-relay";
+    private static final String RELAY_IMAGE = "python:3.12.7-alpine3.20";
+    private static final String RELAY_SCRIPT = "src/test/resources/docker/federation/s2s-relay.py";
+    private static final String RELAY_ADDRESS = "172.50.0.30";
+    private static final String FEDERATED_NETWORK = "openfire_openfire-federated-net";
 
     // The name under which earlier versions of these tests copied the overlay that disables server-to-server TLS.
     private static final String LEGACY_OVERLAY_TARGET = "zz-disable-starttls.sql";
@@ -95,6 +117,9 @@ public class FederatedTestEnvironment {
         if (!initialized) {
             setupSqlOverlay();
             startFederatedEnvironment();
+            if (isStreamManagement()) {
+                startRelay();
+            }
             waitForFederatedEnvironment();
             initialized = true;
             // Register shutdown hook to ensure cleanup happens even if tests fail
@@ -125,6 +150,7 @@ public class FederatedTestEnvironment {
         if (initialized) {
             exportLogs();
             cleanupSqlOverlay();
+            removeRelay();
             stopFederatedEnvironment();
             removeDataDirectory();
             initialized = false;
@@ -148,6 +174,15 @@ public class FederatedTestEnvironment {
     }
 
     /**
+     * Whether {@value #STREAM_MANAGEMENT_PROPERTY} enables Stream Management on server-to-server connections.
+     *
+     * @return {@code true} if the property is {@code true}
+     */
+    static boolean isStreamManagement() {
+        return Boolean.parseBoolean(System.getProperty(STREAM_MANAGEMENT_PROPERTY, "false"));
+    }
+
+    /**
      * Sets up SQL overlay directories with configuration files.
      *
      * Copies the script that configures how the servers authenticate to each other: with dialback, which disables
@@ -167,6 +202,73 @@ public class FederatedTestEnvironment {
                     Path.of("openfire-docker-compose/federation/sql/" + i + "/" + OVERLAY_TARGET),
                     StandardCopyOption.REPLACE_EXISTING
             );
+            final Path streamManagementTarget = Path.of("openfire-docker-compose/federation/sql/" + i + "/" + STREAM_MANAGEMENT_OVERLAY_TARGET);
+            if (isStreamManagement()) {
+                Files.copy(
+                        Path.of("src/test/resources/docker/federation/" + String.format(STREAM_MANAGEMENT_OVERLAY, i)),
+                        streamManagementTarget,
+                        StandardCopyOption.REPLACE_EXISTING
+                );
+            } else {
+                Files.deleteIfExists(streamManagementTarget);
+            }
+        }
+    }
+
+    /**
+     * Starts the relay container, through which each server reaches the other when Stream Management is enabled: port
+     * 5269 leads to xmpp2, port 5270 to xmpp1. A container left behind by an interrupted run is removed first.
+     *
+     * @throws IOException if the docker command cannot be run
+     * @throws InterruptedException if the thread is interrupted while waiting for the command
+     */
+    private static void startRelay() throws IOException, InterruptedException {
+        logger.info("Starting the relay container for server-to-server connections...");
+        docker(false, "rm", "-f", RELAY_CONTAINER);
+        docker(true, "run", "-d", "--name", RELAY_CONTAINER, "--network", FEDERATED_NETWORK, "--ip", RELAY_ADDRESS,
+                RELAY_IMAGE, "python3", "-u", "-c", Files.readString(Path.of(RELAY_SCRIPT)));
+    }
+
+    /**
+     * Freezes the connections through the relay: what either server sends on them from now on is dropped, so it stays
+     * unacknowledged.
+     *
+     * @throws IOException if the docker command cannot be run
+     * @throws InterruptedException if the thread is interrupted while waiting for the command
+     */
+    public static void freezeRelay() throws IOException, InterruptedException {
+        docker(true, "kill", "--signal", "USR1", RELAY_CONTAINER);
+    }
+
+    /**
+     * Breaks every connection through the relay, without closing the streams on them: each is closed in an orderly way
+     * (TCP FIN) towards both servers. What was in flight is lost. Connections made later are relayed as normal.
+     *
+     * A reset connection is not used: Openfire does not keep a session for resumption when its connection is reset
+     * (OF-3464).
+     *
+     * @throws IOException if the docker command cannot be run
+     * @throws InterruptedException if the thread is interrupted while waiting for the command
+     */
+    public static void breakRelay() throws IOException, InterruptedException {
+        docker(true, "kill", "--signal", "USR2", RELAY_CONTAINER);
+    }
+
+    private static void removeRelay() throws IOException, InterruptedException {
+        if (isStreamManagement()) {
+            docker(false, "rm", "-f", RELAY_CONTAINER);
+        }
+    }
+
+    private static void docker(final boolean mustSucceed, final String... args) throws IOException, InterruptedException {
+        final String[] command = new String[args.length + 1];
+        command[0] = "docker";
+        System.arraycopy(args, 0, command, 1, args.length);
+        final Process process = new ProcessBuilder(command).redirectErrorStream(true).start();
+        final String output = new String(process.getInputStream().readAllBytes()).trim();
+        final int exitCode = process.waitFor();
+        if (mustSucceed && exitCode != 0) {
+            throw new IllegalStateException("Command failed (exit code " + exitCode + "): " + String.join(" ", command) + ": " + output);
         }
     }
 
@@ -321,6 +423,7 @@ public class FederatedTestEnvironment {
         logger.info("Cleaning up SQL overlay files...");
         for (int i = 1; i <= 2; i++) {
             Files.deleteIfExists(Path.of("openfire-docker-compose/federation/sql/" + i + "/" + OVERLAY_TARGET));
+            Files.deleteIfExists(Path.of("openfire-docker-compose/federation/sql/" + i + "/" + STREAM_MANAGEMENT_OVERLAY_TARGET));
         }
     }
 
