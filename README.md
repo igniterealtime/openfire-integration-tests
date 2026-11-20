@@ -64,20 +64,32 @@ The project uses Maven Wrapper (no local Maven installation required).
 ./mvnw verify -Dit.test=FederatedChatIT#federatedMessageTest
 ```
 
-### Server-to-Server Authentication
+### Server-to-Server Configurations
 
-`./mvnw verify` runs the federation tests in two configurations, one for each way in which the servers can authenticate
-to each other:
+`./mvnw verify` runs the tests in three configurations. Each run selects its tests by their JUnit tags:
 
-- **dialback** (Failsafe execution `dialback`): all tests. Server-to-server TLS is disabled, so the servers use dialback.
-- **SASL EXTERNAL** (Failsafe execution `sasl-external`): only the tests that send stanzas between the servers, listed in
-  that execution's `<includes>` in `pom.xml`; add a new test of server-to-server traffic there. TLS is enabled and
-  dialback disabled, so the servers authenticate with the certificates of the federation environment.
-  `xmpp.server.outgoing.accept-reused-stream-id` is false on both servers, so this run also fails if a server does not
-  send a new stream ID when the stream is restarted after SASL.
+- `federation`: a test of stanzas sent between the servers, run in every configuration;
+- `stream-management`: a test that needs Stream Management on server-to-server connections and the relay between the
+  servers, run only in the `stream-management` configuration.
+
+A test without a tag runs only with dialback. A new test of server-to-server traffic gets `@Tag("federation")`; no change
+to `pom.xml` is needed.
+
+- **dialback** (Failsafe execution `dialback`): every test except those tagged `stream-management`. Server-to-server TLS
+  is disabled, so the servers use dialback.
+- **SASL EXTERNAL** (Failsafe execution `sasl-external`): the tests tagged `federation`, except those tagged
+  `stream-management`. TLS is enabled and dialback disabled, so the servers authenticate with the certificates of the
+  federation environment. `xmpp.server.outgoing.accept-reused-stream-id` is false on both servers, so this run also
+  fails if a server does not send a new stream ID when the stream is restarted after SASL.
+- **Stream Management** (Failsafe execution `stream-management`): the tests tagged `federation`, with SASL EXTERNAL as
+  above, and Stream Management (XEP-0198) with resumption enabled on server-to-server connections on both servers. Each
+  server reaches the other through a relay container (`openfire-s2s-relay`, at `172.50.0.30` on the federation network),
+  which a test can freeze and break, to break a connection without closing its stream. Needs an Openfire version with
+  Stream Management on server-to-server connections (OF-2425).
 
 Each run writes its test reports, and the Openfire logs of both servers (`1-openfire.log`, `2-openfire.log`), to its own
-directory: `target/failsafe-reports/dialback` and `target/failsafe-reports/sasl-external`.
+directory: `target/failsafe-reports/dialback`, `target/failsafe-reports/sasl-external` and
+`target/failsafe-reports/stream-management`.
 
 ### Configuring Openfire Version
 
