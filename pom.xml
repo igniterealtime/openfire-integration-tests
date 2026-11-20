@@ -140,6 +140,12 @@
                     </systemPropertyVariables>
                 </configuration>
                 <executions>
+                    <!-- Each execution selects the tests it runs by their JUnit tags:
+                         - "federation": a test of stanzas sent between the servers, run with each way the servers can
+                           authenticate to each other, and with Stream Management;
+                         - "stream-management": a test that needs Stream Management on server-to-server connections and
+                           the relay between the servers, run only in the stream-management execution.
+                         An untagged test runs only in the dialback execution. -->
                     <!-- The servers authenticate to each other with dialback (server-to-server TLS disabled). -->
                     <execution>
                         <id>dialback</id>
@@ -148,6 +154,7 @@
                             <goal>verify</goal>
                         </goals>
                         <configuration>
+                            <excludedGroups>stream-management</excludedGroups>
                             <systemPropertyVariables>
                                 <openfire.it.s2s-authentication>dialback</openfire.it.s2s-authentication>
                                 <openfire.it.log-directory>${project.build.directory}/failsafe-reports/dialback</openfire.it.log-directory>
@@ -157,7 +164,7 @@
                         </configuration>
                     </execution>
                     <!-- The tests that send stanzas between the servers, with the servers authenticating to each other
-                         with SASL EXTERNAL. A test of server-to-server traffic is to be added to these includes. -->
+                         with SASL EXTERNAL. -->
                     <execution>
                         <id>sasl-external</id>
                         <goals>
@@ -165,15 +172,33 @@
                             <goal>verify</goal>
                         </goals>
                         <configuration>
-                            <includes combine.self="override">
-                                <include>**/FederatedChatIT.java</include>
-                            </includes>
+                            <groups>federation</groups>
+                            <excludedGroups>stream-management</excludedGroups>
                             <systemPropertyVariables>
                                 <openfire.it.s2s-authentication>sasl-external</openfire.it.s2s-authentication>
                                 <openfire.it.log-directory>${project.build.directory}/failsafe-reports/sasl-external</openfire.it.log-directory>
                             </systemPropertyVariables>
                             <reportsDirectory>${project.build.directory}/failsafe-reports/sasl-external</reportsDirectory>
                             <summaryFile>${project.build.directory}/failsafe-reports/sasl-external/failsafe-summary.xml</summaryFile>
+                        </configuration>
+                    </execution>
+                    <!-- Stream Management (XEP-0198) with resumption on server-to-server connections, which go through a
+                         relay that the tests can break; the servers authenticate with SASL EXTERNAL. -->
+                    <execution>
+                        <id>stream-management</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <groups>federation</groups>
+                            <systemPropertyVariables>
+                                <openfire.it.s2s-authentication>sasl-external</openfire.it.s2s-authentication>
+                                <openfire.it.stream-management>true</openfire.it.stream-management>
+                                <openfire.it.log-directory>${project.build.directory}/failsafe-reports/stream-management</openfire.it.log-directory>
+                            </systemPropertyVariables>
+                            <reportsDirectory>${project.build.directory}/failsafe-reports/stream-management</reportsDirectory>
+                            <summaryFile>${project.build.directory}/failsafe-reports/stream-management/failsafe-summary.xml</summaryFile>
                         </configuration>
                     </execution>
                 </executions>

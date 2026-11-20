@@ -5,6 +5,7 @@ import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.tcp.XMPPTCPConnection;
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.jxmpp.jid.impl.JidCreate;
 import org.slf4j.Logger;
@@ -20,6 +21,7 @@ import static org.igniterealtime.openfire.integration.federation.FederatedTestEn
  * Integration tests for federated chat functionality. Tests the ability to send and receive
  * messages between users on different XMPP servers in the federation.
  */
+@Tag("federation")
 public class FederatedChatIT extends BaseFederationIT {
     private static final Logger logger = LoggerFactory.getLogger(FederatedChatIT.class);
 
