@@ -1,5 +1,8 @@
 package org.igniterealtime.openfire.integration.federation;
 
+import eu.rekawek.toxiproxy.Proxy;
+import eu.rekawek.toxiproxy.ToxiproxyClient;
+import eu.rekawek.toxiproxy.model.ToxicDirection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +14,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Map;
 
 /**
  * Manages the test environment for federated XMPP integration tests.
@@ -34,9 +38,10 @@ import java.time.temporal.ChronoUnit;
  * dialback disabled, so that the servers authenticate with the certificates of the federation environment.
  *
  * When the system property {@value #STREAM_MANAGEMENT_PROPERTY} is {@code true}, both servers use Stream Management
- * (XEP-0198) with resumption on their server-to-server connections, and each reaches the other through a relay
- * container, which a test can freeze and break ({@link #freezeRelay()}, {@link #breakRelay()}) to break a connection
- * without closing its stream.
+ * (XEP-0198) with resumption on their server-to-server connections, and each reaches the other through a relay: a
+ * Toxiproxy container on the network of the federated environment. A test can make the relay drop what it relays
+ * ({@link #dropRelayed(String, RelayDirection)}) and break the connections through it
+ * ({@link #breakRelayedConnections()}).
  */
 public class FederatedTestEnvironment {
     private static final Logger logger = LoggerFactory.getLogger(FederatedTestEnvironment.class);
@@ -59,16 +64,40 @@ public class FederatedTestEnvironment {
      */
     public static final String STREAM_MANAGEMENT_PROPERTY = "openfire.it.stream-management";
 
-    // The SQL overlay of each server that enables Stream Management (stream-management-1.sql, -2.sql), and its target.
-    private static final String STREAM_MANAGEMENT_OVERLAY = "stream-management-%d.sql";
+    // The SQL overlay that enables Stream Management on both servers, and its target. A line that points each server at
+    // the relay is added to it for each server.
+    private static final String STREAM_MANAGEMENT_OVERLAY = "stream-management.sql";
     private static final String STREAM_MANAGEMENT_OVERLAY_TARGET = "zz-stream-management.sql";
 
-    // The relay container, on the network of the federated environment. Port 5269 leads to xmpp2, port 5270 to xmpp1.
+    // The containers of the federated environment, as Docker Compose names them, and the services they run.
+    private static final String COMPOSE_PROJECT = "openfire";
+    private static final Map<String, String> SERVICES = Map.of(FederatedTestEnvironment.XMPP1_DOMAIN, "xmpp1", FederatedTestEnvironment.XMPP2_DOMAIN, "xmpp2");
+
+    // The relay: a Toxiproxy container, which joins the network of the federated environment under the name RELAY_HOST.
+    // It has a proxy for each server, named after the server's domain, which leads to that server's port 5269. Each
+    // server reaches the other through it.
     private static final String RELAY_CONTAINER = "openfire-s2s-relay";
-    private static final String RELAY_IMAGE = "python:3.12.7-alpine3.20";
-    private static final String RELAY_SCRIPT = "src/test/resources/docker/federation/s2s-relay.py";
-    private static final String RELAY_ADDRESS = "172.50.0.30";
-    private static final String FEDERATED_NETWORK = "openfire_openfire-federated-net";
+    private static final String RELAY_IMAGE = "ghcr.io/shopify/toxiproxy:2.12.0";
+    private static final String RELAY_HOST = "s2s-relay";
+    private static final int RELAY_API_PORT = 8474;
+    private static final Map<String, Integer> RELAY_PORTS = Map.of(FederatedTestEnvironment.XMPP1_DOMAIN, 5270, FederatedTestEnvironment.XMPP2_DOMAIN, 5269);
+    private static final int SERVER_PORT = 5269;
+    private static ToxiproxyClient relay;
+
+    /**
+     * What the relay drops, on the connections to a server: what the server that opened the connection sends on it, or
+     * what the server it leads to sends back, such as acknowledgements.
+     */
+    public enum RelayDirection {
+        TO_RECEIVING_SERVER(ToxicDirection.UPSTREAM),
+        TO_SENDING_SERVER(ToxicDirection.DOWNSTREAM);
+
+        private final ToxicDirection toxicDirection;
+
+        RelayDirection(final ToxicDirection toxicDirection) {
+            this.toxicDirection = toxicDirection;
+        }
+    }
 
     // The name under which earlier versions of these tests copied the overlay that disables server-to-server TLS.
     private static final String LEGACY_OVERLAY_TARGET = "zz-disable-starttls.sql";
@@ -204,11 +233,10 @@ public class FederatedTestEnvironment {
             );
             final Path streamManagementTarget = Path.of("openfire-docker-compose/federation/sql/" + i + "/" + STREAM_MANAGEMENT_OVERLAY_TARGET);
             if (isStreamManagement()) {
-                Files.copy(
-                        Path.of("src/test/resources/docker/federation/" + String.format(STREAM_MANAGEMENT_OVERLAY, i)),
-                        streamManagementTarget,
-                        StandardCopyOption.REPLACE_EXISTING
-                );
+                final String otherDomain = i == 1 ? XMPP2_DOMAIN : XMPP1_DOMAIN;
+                Files.writeString(streamManagementTarget,
+                        Files.readString(Path.of("src/test/resources/docker/federation/" + STREAM_MANAGEMENT_OVERLAY))
+                        + relayOverride(otherDomain));
             } else {
                 Files.deleteIfExists(streamManagementTarget);
             }
@@ -216,42 +244,85 @@ public class FederatedTestEnvironment {
     }
 
     /**
-     * Starts the relay container, through which each server reaches the other when Stream Management is enabled: port
-     * 5269 leads to xmpp2, port 5270 to xmpp1. A container left behind by an interrupted run is removed first.
+     * The SQL that points a server at the relay for its connections to another domain, by a DNS override.
      *
-     * @throws IOException if the docker command cannot be run
+     * @param domain the domain that the server connects to
+     * @return an SQL statement that sets the DNS override
+     */
+    private static String relayOverride(final String domain) {
+        final String override = "{" + domain + "," + RELAY_HOST + ":" + RELAY_PORTS.get(domain) + "}";
+        return "\n-- Added by FederatedTestEnvironment: this server reaches " + domain + " through the relay.\n"
+                + "INSERT INTO ofProperty (name, propValue)\n"
+                + "VALUES ('dnsutil.dnsOverride', '" + override + "')\n"
+                + "    ON CONFLICT (name) DO UPDATE SET propValue = '" + override + "';\n";
+    }
+
+    /**
+     * Starts the relay container, through which each server reaches the other when Stream Management is enabled, on the
+     * network of the federated environment, and creates its proxies. A container left behind by an interrupted run is
+     * removed first.
+     *
+     * @throws IOException if the docker command cannot be run, or the relay cannot be configured
      * @throws InterruptedException if the thread is interrupted while waiting for the command
      */
     private static void startRelay() throws IOException, InterruptedException {
         logger.info("Starting the relay container for server-to-server connections...");
         docker(false, "rm", "-f", RELAY_CONTAINER);
-        docker(true, "run", "-d", "--name", RELAY_CONTAINER, "--network", FEDERATED_NETWORK, "--ip", RELAY_ADDRESS,
-                RELAY_IMAGE, "python3", "-u", "-c", Files.readString(Path.of(RELAY_SCRIPT)));
+        // The network that Docker Compose created for the environment, as the first server's container uses it (the
+        // first, should it be on more than one).
+        final String network = docker(true, "inspect", "--format",
+                "{{range $name, $settings := .NetworkSettings.Networks}}{{$name}} {{end}}", container("xmpp1")).split(" ")[0];
+        docker(true, "run", "-d", "--name", RELAY_CONTAINER, "--network", network, "--network-alias", RELAY_HOST,
+                "-p", "127.0.0.1::" + RELAY_API_PORT, RELAY_IMAGE);
+        final String api = docker(true, "port", RELAY_CONTAINER, RELAY_API_PORT + "/tcp").lines().findFirst().orElseThrow();
+        relay = new ToxiproxyClient(api.substring(0, api.lastIndexOf(':')), Integer.parseInt(api.substring(api.lastIndexOf(':') + 1)));
+        final Instant deadline = Instant.now().plus(Duration.ofSeconds(30));
+        while (true) {
+            try {
+                relay.version();
+                break;
+            } catch (IOException e) {
+                if (Instant.now().isAfter(deadline)) {
+                    throw e;
+                }
+                Thread.sleep(200);
+            }
+        }
+        for (final Map.Entry<String, Integer> entry : RELAY_PORTS.entrySet()) {
+            relay.createProxy(entry.getKey(), "0.0.0.0:" + entry.getValue(), SERVICES.get(entry.getKey()) + ":" + SERVER_PORT);
+        }
     }
 
     /**
-     * Freezes the connections through the relay: what either server sends on them from now on is dropped, so it stays
-     * unacknowledged.
+     * Makes the relay drop, from now on, what it relays in one direction on the connections to a server, until
+     * {@link #breakRelayedConnections()}.
      *
-     * @throws IOException if the docker command cannot be run
-     * @throws InterruptedException if the thread is interrupted while waiting for the command
+     * @param receivingDomain the domain of the server that the connections lead to
+     * @param direction       the direction in which data is dropped
+     * @throws IOException if the relay cannot be configured
      */
-    public static void freezeRelay() throws IOException, InterruptedException {
-        docker(true, "kill", "--signal", "USR1", RELAY_CONTAINER);
+    public static void dropRelayed(final String receivingDomain, final RelayDirection direction) throws IOException {
+        relay.getProxy(receivingDomain).toxics().timeout("drop-" + direction.name().toLowerCase(), direction.toxicDirection, 0);
     }
 
     /**
-     * Breaks every connection through the relay, without closing the streams on them: each is closed in an orderly way
-     * (TCP FIN) towards both servers. What was in flight is lost. Connections made later are relayed as normal.
+     * Breaks every connection through the relay, without closing the streams on them: the relay closes each in an
+     * orderly way (TCP FIN) towards both servers, and drops nothing from then on. What was in flight is lost.
+     * Connections made later are relayed as normal.
      *
      * A reset connection is not used: Openfire does not keep a session for resumption when its connection is reset
      * (OF-3464).
      *
-     * @throws IOException if the docker command cannot be run
-     * @throws InterruptedException if the thread is interrupted while waiting for the command
+     * @throws IOException if the relay cannot be configured
      */
-    public static void breakRelay() throws IOException, InterruptedException {
-        docker(true, "kill", "--signal", "USR2", RELAY_CONTAINER);
+    public static void breakRelayedConnections() throws IOException {
+        for (final Proxy proxy : relay.getProxies()) {
+            proxy.disable();
+            for (final var toxic : proxy.toxics().getAll()) {
+                toxic.remove();
+            }
+            proxy.enable();
+        }
     }
 
     private static void removeRelay() throws IOException, InterruptedException {
@@ -260,7 +331,11 @@ public class FederatedTestEnvironment {
         }
     }
 
-    private static void docker(final boolean mustSucceed, final String... args) throws IOException, InterruptedException {
+    private static String container(final String service) {
+        return COMPOSE_PROJECT + "-" + service + "-1";
+    }
+
+    private static String docker(final boolean mustSucceed, final String... args) throws IOException, InterruptedException {
         final String[] command = new String[args.length + 1];
         command[0] = "docker";
         System.arraycopy(args, 0, command, 1, args.length);
@@ -270,6 +345,7 @@ public class FederatedTestEnvironment {
         if (mustSucceed && exitCode != 0) {
             throw new IllegalStateException("Command failed (exit code " + exitCode + "): " + String.join(" ", command) + ": " + output);
         }
+        return output;
     }
 
     /**
@@ -335,8 +411,8 @@ public class FederatedTestEnvironment {
     {
         logger.info("Waiting up to {} seconds for servers to initialize...", STARTUP_WAIT.toSeconds());
         final Instant deadline = Instant.now().plus(STARTUP_WAIT);
-        waitForHealthy("openfire", "xmpp1", deadline);
-        waitForHealthy("openfire", "xmpp2", deadline);
+        waitForHealthy(COMPOSE_PROJECT, "xmpp1", deadline);
+        waitForHealthy(COMPOSE_PROJECT, "xmpp2", deadline);
     }
 
     /**
