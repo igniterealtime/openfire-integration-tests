@@ -83,9 +83,12 @@ to `pom.xml` is needed.
   fails if a server does not send a new stream ID when the stream is restarted after SASL.
 - **Stream Management** (Failsafe execution `stream-management`): the tests tagged `federation`, with SASL EXTERNAL as
   above, and Stream Management (XEP-0198) with resumption enabled on server-to-server connections on both servers. Each
-  server reaches the other through a relay container (`openfire-s2s-relay`, at `172.50.0.30` on the federation network),
-  which a test can freeze and break, to break a connection without closing its stream. Needs an Openfire version with
-  Stream Management on server-to-server connections (OF-2425).
+  server reaches the other through a relay: a [Toxiproxy](https://github.com/Shopify/toxiproxy) container
+  (`openfire-s2s-relay`), which joins the federation network as `s2s-relay`. A test can make it drop what it relays, and
+  break a connection without closing its stream. The relay's settings are defined in `FederatedTestEnvironment` only;
+  it finds the network from the `xmpp1` container, and reaches the servers by their Compose service names. The tests
+  tagged `stream-management` are skipped against an Openfire version earlier than 5.2.0, which has no Stream
+  Management on server-to-server connections (OF-2425), so that this run passes on Openfire's maintenance branches.
 
 Each run writes its test reports, and the Openfire logs of both servers (`1-openfire.log`, `2-openfire.log`), to its own
 directory: `target/failsafe-reports/dialback`, `target/failsafe-reports/sasl-external` and
