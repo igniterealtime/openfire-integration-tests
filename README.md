@@ -66,29 +66,19 @@ The project uses Maven Wrapper (no local Maven installation required).
 
 ### Server-to-Server Configurations
 
-`./mvnw verify` runs the tests in three configurations. Each run selects its tests by their JUnit tags:
+`./mvnw verify` runs the tests in three configurations, each on a fresh federated environment:
 
-- `federation`: a test of stanzas sent between the servers, run in every configuration;
-- `stream-management`: a test that needs Stream Management on server-to-server connections and the relay between the
-  servers, run only in the `stream-management` configuration.
-
-A test without a tag runs only with dialback. A new test of server-to-server traffic gets `@Tag("federation")`; no change
-to `pom.xml` is needed.
-
-- **dialback** (Failsafe execution `dialback`): every test except those tagged `stream-management`. Server-to-server TLS
-  is disabled, so the servers use dialback.
-- **SASL EXTERNAL** (Failsafe execution `sasl-external`): the tests tagged `federation`, except those tagged
-  `stream-management`. TLS is enabled and dialback disabled, so the servers authenticate with the certificates of the
-  federation environment. `xmpp.server.outgoing.accept-reused-stream-id` is false on both servers, so this run also
-  fails if a server does not send a new stream ID when the stream is restarted after SASL.
-- **Stream Management** (Failsafe execution `stream-management`): the tests tagged `federation`, with SASL EXTERNAL as
-  above, and Stream Management (XEP-0198) with resumption enabled on server-to-server connections on both servers. Each
-  server reaches the other through a relay: a [Toxiproxy](https://github.com/Shopify/toxiproxy) container
-  (`openfire-s2s-relay`), which joins the federation network as `s2s-relay`. A test can make it drop what it relays, and
-  break a connection without closing its stream. The relay's settings are defined in `FederatedTestEnvironment` only;
-  it finds the network from the `xmpp1` container, and reaches the servers by their Compose service names. The tests
-  tagged `stream-management` are skipped against an Openfire version earlier than 5.2.0, which has no Stream
-  Management on server-to-server connections (OF-2425), so that this run passes on Openfire's maintenance branches.
+- **Dialback** (Failsafe execution `dialback`): server-to-server TLS is disabled, so the servers authenticate to each
+  other with dialback.
+- **SASL EXTERNAL** (Failsafe execution `sasl-external`): TLS is enabled and dialback disabled, so the servers
+  authenticate with the certificates of the federation environment. `xmpp.server.outgoing.accept-reused-stream-id` is
+  false on both servers, so this run also fails if a server does not send a new stream ID when the stream is restarted
+  after SASL.
+- **Stream Management** (Failsafe execution `stream-management`): SASL EXTERNAL as above, with Stream Management
+  (XEP-0198) and resumption enabled on server-to-server connections. Besides the federation tests, it runs
+  `StreamManagementFederationIT`, which tests that a stream is resumed after its connection breaks, and that every
+  message then arrives once, in order. That test is skipped against Openfire versions before 5.2.0, which don't have
+  Stream Management on server-to-server connections (OF-2425).
 
 Each run writes its test reports, and the Openfire logs of both servers (`1-openfire.log`, `2-openfire.log`), to its own
 directory: `target/failsafe-reports/dialback`, `target/failsafe-reports/sasl-external` and
@@ -125,6 +115,21 @@ Server 2 (xmpp2.localhost.example):
 - user4/password
 
 ## Development
+
+### Adding a Test
+
+- **Choose the configurations with JUnit tags.** A test tagged `federation` (a test of stanzas sent between the
+  servers) runs in all three configurations. A test tagged `stream-management` as well runs only in the Stream
+  Management configuration. A test without a tag runs only with dialback. No change to `pom.xml` is needed.
+- **Skip a test of a feature that older Openfire versions don't have.** Openfire's maintenance branches (5.0 and 5.1)
+  run this repository's tests in their CI too, so such a test must skip itself on those versions, with the reason, as
+  `StreamManagementFederationIT` does: it checks the version that the server reports (XEP-0092).
+- **Breaking connections between the servers.** In the Stream Management configuration, each server reaches the other
+  through a relay: a [Toxiproxy](https://github.com/Shopify/toxiproxy) container (`openfire-s2s-relay`), which joins the
+  network of the `xmpp1` container as `s2s-relay` and reaches the servers by their Compose service names.
+  `FederatedTestEnvironment` defines its settings, and lets a test make it drop what it relays
+  (`dropRelayed`) or break the connections through it (`breakRelayedConnections`).
+
 
 ### Keeping Up to Date
 
