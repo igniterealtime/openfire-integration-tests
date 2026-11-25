@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -84,6 +85,9 @@ public class FederatedTestEnvironment {
     private static final int SERVER_PORT = 5269;
     private static ToxiproxyClient relay;
 
+    // The HTTP port of the admin console in each server's container.
+    private static final int ADMIN_CONSOLE_PORT = 9090;
+
     /**
      * What the relay drops, on the connections to a server: what the server that opened the connection sends on it, or
      * what the server it leads to sends back, such as acknowledgements.
@@ -127,6 +131,12 @@ public class FederatedTestEnvironment {
     public static final String USER_3 = "user3";
     public static final String USER_4 = "user4";
     public static final String PASSWORD = "password";
+
+    /**
+     * A host on the network of the environment that the servers can resolve and reach, but that accepts no
+     * server-to-server connections: the database of the second server, by its Compose service name.
+     */
+    public static final String HOST_WITHOUT_XMPP = "db2";
 
     /**
      * Initializes and starts the federated test environment.
@@ -200,6 +210,15 @@ public class FederatedTestEnvironment {
             case "sasl-external" -> SASL_EXTERNAL_OVERLAY;
             default -> throw new IllegalArgumentException("Unsupported value for " + S2S_AUTHENTICATION_PROPERTY + ": " + mode);
         };
+    }
+
+    /**
+     * Whether {@value #S2S_AUTHENTICATION_PROPERTY} selects dialback, with server-to-server TLS disabled.
+     *
+     * @return {@code true} if the servers authenticate to each other with dialback
+     */
+    static boolean isDialback() {
+        return DIALBACK_OVERLAY.equals(s2sAuthenticationOverlay());
     }
 
     /**
@@ -329,6 +348,22 @@ public class FederatedTestEnvironment {
         if (isStreamManagement()) {
             docker(false, "rm", "-f", RELAY_CONTAINER);
         }
+    }
+
+    /**
+     * The address at which the admin console of a server is reached from the tests: the host port that the environment
+     * publishes for the console's HTTP port in the server's container.
+     *
+     * @param domain the domain of the server
+     * @return the address of the console, such as {@code http://127.0.0.1:9091/}
+     * @throws IOException if the docker command cannot be run
+     * @throws InterruptedException if the thread is interrupted while waiting for the command
+     */
+    public static URI adminConsole(final String domain) throws IOException, InterruptedException {
+        final String published = docker(true, "port", container(SERVICES.get(domain)), ADMIN_CONSOLE_PORT + "/tcp")
+                .lines().findFirst().orElseThrow();
+        final int port = Integer.parseInt(published.substring(published.lastIndexOf(':') + 1));
+        return URI.create("http://127.0.0.1:" + port + "/");
     }
 
     private static String container(final String service) {
