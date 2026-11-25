@@ -52,6 +52,9 @@ public class StreamManagementFederationIT extends BaseFederationIT {
     private static final int IN_FLIGHT = 3;
     private static final int WHILE_BROKEN = 2;
 
+    // The start of the body of each message that these tests send, by which the recipient tells them from others.
+    private static final String MESSAGE_PREFIX = "sm-";
+
     // Time for all messages to arrive after the break: the stream is resumed on a new connection.
     private static final Duration DELIVERY_TIMEOUT = Duration.ofSeconds(60);
 
@@ -98,10 +101,12 @@ public class StreamManagementFederationIT extends BaseFederationIT {
         final AbstractXMPPConnection recipientConnection = connect(recipientPort, recipientDomain, recipient);
         final List<String> received = Collections.synchronizedList(new ArrayList<>());
         try {
-            // A synchronous listener is called in the order in which the stanzas arrive.
+            // A synchronous listener is called in the order in which the stanzas arrive. Only this test's messages are
+            // counted: the recipient can also receive messages that earlier tests left behind, such as offline messages.
             recipientConnection.addStanzaListener(
                     stanza -> received.add(((Message) stanza).getBody()),
-                    stanza -> stanza instanceof Message message && message.getType() == Message.Type.chat);
+                    stanza -> stanza instanceof Message message && message.getType() == Message.Type.chat
+                            && message.getBody() != null && message.getBody().startsWith(MESSAGE_PREFIX));
 
             // Messages go to the recipient's full JID: one to the bare JID can be stored offline if it arrives before the
             // recipient's initial presence has been processed.
@@ -168,7 +173,7 @@ public class StreamManagementFederationIT extends BaseFederationIT {
 
     private static String send(AbstractXMPPConnection connection, String to) throws Exception {
         // The body identifies the message: a copy that is sent again carries the same body.
-        final String id = "sm-" + UUID.randomUUID();
+        final String id = MESSAGE_PREFIX + UUID.randomUUID();
         final Message message = connection.getStanzaFactory()
                 .buildMessageStanza()
                 .to(JidCreate.from(to))

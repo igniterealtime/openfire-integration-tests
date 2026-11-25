@@ -25,10 +25,6 @@ import java.util.stream.Collectors;
  */
 final class AdminConsole {
 
-    // The administrator of each server in the federated environment.
-    private static final String ADMIN_USER = "admin";
-    private static final String ADMIN_PASSWORD = "admin";
-
     // A server-to-server connection test waits for each step of the connection in turn, up to the server's timeouts.
     private static final Duration REQUEST_TIMEOUT = Duration.ofMinutes(5);
 
@@ -55,8 +51,8 @@ final class AdminConsole {
         final Document form = console.get("login.jsp");
         final Map<String, String> fields = new LinkedHashMap<>();
         fields.put("login", "true");
-        fields.put("username", ADMIN_USER);
-        fields.put("password", ADMIN_PASSWORD);
+        fields.put("username", FederatedTestEnvironment.ADMIN_USER);
+        fields.put("password", FederatedTestEnvironment.ADMIN_PASSWORD);
         fields.put("csrf", csrf(form));
         final Document page = console.post("login.jsp", fields);
         if (page.getElementById("loginForm") != null || page.location().contains("login.jsp")) {

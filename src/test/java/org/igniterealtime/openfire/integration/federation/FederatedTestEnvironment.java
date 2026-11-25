@@ -132,11 +132,20 @@ public class FederatedTestEnvironment {
     public static final String USER_4 = "user4";
     public static final String PASSWORD = "password";
 
+    // The administrator of each server, for its admin console.
+    public static final String ADMIN_USER = "admin";
+    public static final String ADMIN_PASSWORD = "admin";
+
     /**
      * A host on the network of the environment that the servers can resolve and reach, but that accepts no
      * server-to-server connections: the database of the second server, by its Compose service name.
      */
     public static final String HOST_WITHOUT_XMPP = "db2";
+
+    /**
+     * A domain that has no address in DNS: a name under the domain of the environment that no container has.
+     */
+    public static final String DOMAIN_WITHOUT_ADDRESS = "no-such-server.localhost.example";
 
     /**
      * Initializes and starts the federated test environment.

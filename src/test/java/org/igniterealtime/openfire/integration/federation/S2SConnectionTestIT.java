@@ -79,7 +79,7 @@ public class S2SConnectionTestIT extends BaseFederationIT {
      */
     @Test
     void unresolvableDomainFailsAtDnsCheck() throws Exception {
-        assertFailsAt(DNS, "No address was found", AdminConsole.loginTo(XMPP1_DOMAIN).testConnection("no-such-server.localhost.example"));
+        assertFailsAt(DNS, "No address was found", AdminConsole.loginTo(XMPP1_DOMAIN).testConnection(DOMAIN_WITHOUT_ADDRESS));
     }
 
     /**
