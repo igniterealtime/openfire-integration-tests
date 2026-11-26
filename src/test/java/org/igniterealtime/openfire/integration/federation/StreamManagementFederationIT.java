@@ -4,6 +4,8 @@ import org.jivesoftware.smack.AbstractXMPPConnection;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.tcp.XMPPTCPConnection;
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration;
+import org.jivesoftware.smackx.iqversion.VersionManager;
+import org.jivesoftware.smackx.iqversion.packet.Version;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
@@ -20,6 +22,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.igniterealtime.openfire.integration.federation.FederatedTestEnvironment.*;
 
@@ -64,7 +68,7 @@ public class StreamManagementFederationIT extends BaseFederationIT {
     @BeforeAll
     static void findServerVersion() throws Exception {
         if (isStreamManagement()) {
-            version = OpenfireVersion.reportedBy(XMPP1_PORT, XMPP1_DOMAIN, USER_1);
+            version = serverVersion();
         }
     }
 
@@ -72,8 +76,50 @@ public class StreamManagementFederationIT extends BaseFederationIT {
     @BeforeEach
     void requireStreamManagement() {
         Assumptions.assumeTrue(isStreamManagement(), "Stream Management on server-to-server connections is not enabled for this run");
-        Assumptions.assumeTrue(OpenfireVersion.isAtLeast(version, FIRST_VERSION),
+        Assumptions.assumeTrue(isAtLeast(version, FIRST_VERSION),
                 "Openfire " + version + " has no Stream Management on server-to-server connections (added in " + FIRST_VERSION + ")");
+    }
+
+    /**
+     * The version of Openfire that the first server reports (XEP-0092).
+     */
+    private static String serverVersion() throws Exception {
+        final AbstractXMPPConnection connection = connect(XMPP1_PORT, XMPP1_DOMAIN, USER_1);
+        try {
+            final Version version = VersionManager.getInstanceFor(connection).getVersion(JidCreate.domainBareFrom(XMPP1_DOMAIN));
+            return version.getVersion();
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    /**
+     * Whether a version string, such as "5.2.0 Alpha" or "5.1.1", is at least a version such as "5.2.0". Only the
+     * numbers at its start are compared.
+     */
+    static boolean isAtLeast(String version, String minimum) {
+        final int[] actual = numbers(version);
+        final int[] required = numbers(minimum);
+        for (int i = 0; i < required.length; i++) {
+            final int part = i < actual.length ? actual[i] : 0;
+            if (part != required[i]) {
+                return part > required[i];
+            }
+        }
+        return true;
+    }
+
+    private static int[] numbers(String version) {
+        final Matcher matcher = Pattern.compile("^\\s*(\\d+(?:\\.\\d+)*)").matcher(version);
+        if (!matcher.find()) {
+            throw new IllegalArgumentException("Not a version: " + version);
+        }
+        final String[] parts = matcher.group(1).split("\\.");
+        final int[] result = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            result[i] = Integer.parseInt(parts[i]);
+        }
+        return result;
     }
 
     /**

@@ -129,10 +129,6 @@ Server 2 (xmpp2.localhost.example):
   network of the `xmpp1` container as `s2s-relay` and reaches the servers by their Compose service names.
   `FederatedTestEnvironment` defines its settings, and lets a test make it drop what it relays
   (`dropRelayed`) or break the connections through it (`breakRelayedConnections`).
-- **Using the admin console.** `AdminConsole` logs in to a server's admin console as the environment's administrator,
-  through the port that the environment publishes for it, and submits its forms as a browser does.
-  `S2SConnectionTestIT` uses it to run the server-to-server connection test and read its checklist.
-- **Checking an Openfire version.** `OpenfireVersion` gives the version that a server reports, and compares versions.
 
 
 ### Keeping Up to Date
