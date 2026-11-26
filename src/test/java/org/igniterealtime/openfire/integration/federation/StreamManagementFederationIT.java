@@ -56,9 +56,6 @@ public class StreamManagementFederationIT extends BaseFederationIT {
     private static final int IN_FLIGHT = 3;
     private static final int WHILE_BROKEN = 2;
 
-    // The start of the body of each message that these tests send, by which the recipient tells them from others.
-    private static final String MESSAGE_PREFIX = "sm-";
-
     // Time for all messages to arrive after the break: the stream is resumed on a new connection.
     private static final Duration DELIVERY_TIMEOUT = Duration.ofSeconds(60);
 
@@ -146,20 +143,22 @@ public class StreamManagementFederationIT extends BaseFederationIT {
         final AbstractXMPPConnection senderConnection = connect(senderPort, senderDomain, sender);
         final AbstractXMPPConnection recipientConnection = connect(recipientPort, recipientDomain, recipient);
         final List<String> received = Collections.synchronizedList(new ArrayList<>());
+        // The start of the body of each message that this run of the test sends, by which the recipient tells them from
+        // messages that other tests, or earlier runs of this one, left behind (such as offline messages).
+        final String prefix = "sm-" + UUID.randomUUID() + "-";
         try {
-            // A synchronous listener is called in the order in which the stanzas arrive. Only this test's messages are
-            // counted: the recipient can also receive messages that earlier tests left behind, such as offline messages.
+            // A synchronous listener is called in the order in which the stanzas arrive. Only this run's messages are counted.
             recipientConnection.addStanzaListener(
                     stanza -> received.add(((Message) stanza).getBody()),
                     stanza -> stanza instanceof Message message && message.getType() == Message.Type.chat
-                            && message.getBody() != null && message.getBody().startsWith(MESSAGE_PREFIX));
+                            && message.getBody() != null && message.getBody().startsWith(prefix));
 
             // Messages go to the recipient's full JID: one to the bare JID can be stored offline if it arrives before the
             // recipient's initial presence has been processed.
             final String to = recipientConnection.getUser().toString();
 
             // The first message sets up the server-to-server connection, on which Stream Management is enabled.
-            final String first = send(senderConnection, to);
+            final String first = send(senderConnection, to, prefix);
             waitFor(received, List.of(first), Duration.ofSeconds(30));
             Assertions.assertTrue(received.contains(first), "The first message, which sets up the server-to-server connection, was not received.");
 
@@ -167,7 +166,7 @@ public class StreamManagementFederationIT extends BaseFederationIT {
             logger.info("Dropping what {} sends back: the next {} message(s) arrive, but are not acknowledged.", recipientDomain, UNACKNOWLEDGED);
             dropRelayed(recipientDomain, RelayDirection.TO_SENDING_SERVER);
             for (int i = 0; i < UNACKNOWLEDGED; i++) {
-                sent.add(send(senderConnection, to));
+                sent.add(send(senderConnection, to, prefix));
             }
             waitFor(received, sent, Duration.ofSeconds(30));
             Assertions.assertTrue(received.containsAll(sent), "The messages sent before the connection was broken did not arrive.");
@@ -175,7 +174,7 @@ public class StreamManagementFederationIT extends BaseFederationIT {
             logger.info("Dropping what {} sends: the next {} message(s) are lost in flight.", senderDomain, IN_FLIGHT);
             dropRelayed(recipientDomain, RelayDirection.TO_RECEIVING_SERVER);
             for (int i = 0; i < IN_FLIGHT; i++) {
-                sent.add(send(senderConnection, to));
+                sent.add(send(senderConnection, to, prefix));
             }
             // Time for those messages to leave the sending server, so that they are lost rather than sent after the break.
             Thread.sleep(1000);
@@ -183,7 +182,7 @@ public class StreamManagementFederationIT extends BaseFederationIT {
             logger.info("Breaking the connection, and sending {} message(s) while it is broken.", WHILE_BROKEN);
             breakRelayedConnections();
             for (int i = 0; i < WHILE_BROKEN; i++) {
-                sent.add(send(senderConnection, to));
+                sent.add(send(senderConnection, to, prefix));
             }
 
             waitFor(received, sent, DELIVERY_TIMEOUT);
@@ -217,9 +216,9 @@ public class StreamManagementFederationIT extends BaseFederationIT {
         return connection;
     }
 
-    private static String send(AbstractXMPPConnection connection, String to) throws Exception {
+    private static String send(AbstractXMPPConnection connection, String to, String prefix) throws Exception {
         // The body identifies the message: a copy that is sent again carries the same body.
-        final String id = MESSAGE_PREFIX + UUID.randomUUID();
+        final String id = prefix + UUID.randomUUID();
         final Message message = connection.getStanzaFactory()
                 .buildMessageStanza()
                 .to(JidCreate.from(to))
